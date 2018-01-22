@@ -1,0 +1,26 @@
+{
+  "name": "bursa",
+  "version": "0.0.16",
+  "description": "Bursa trader terminal",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "web3": "1.0.0"
+  },
+  "engines": {
+    "node": "4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/termslang/bursa"
+  },
+  "keywords": [
+    "node"
+  ],
+  "author": "Michael Baynov",
+  "contributors": [],
+  "license": "GNU GPL v2"
+}
