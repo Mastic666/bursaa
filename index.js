@@ -3,10 +3,12 @@ var deployed = require('./deployed.js');
 
 
 var bursalib = require('./bursalib.js');
-web3 = bursalib.web3;
-var acc0 = bursalib.acc0;
-var gasPrice = bursalib.gasPrice;
-var data = bursalib.data;
+
+var web3;// = bursalib.web3;
+var acc0;// = bursalib.acc0;
+var gasPrice;// = bursalib.gasPrice;
+var data;// = bursalib.data;
+
 
 
 function toWei(amount) {
@@ -57,11 +59,12 @@ async function canTrade(order, factAmountGet, from) {
 }
 
 async function makeTrade(o, willGet) {
-  console.log(o);
+  console.log(o.event);
   var canGive = await bursa.methods.canTrade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
     o.event.block, o.event.user, willGet).call({ from: acc0, gas: 1000000 });
+  if (canGive == 0) return willGet;
 
-  var canGet = canGive * o.priceTokenGet;
+  var canGet = canGive * o.priceOfTokenGet;
   var willGive = willGet / canGet * canGive;
   var restGive = willGive;
   if (willGive > canGive) {
@@ -84,9 +87,9 @@ async function makeTrade(o, willGet) {
 
 
 
-async function matchBuy(symbolGet, amountGet, symbolGive, amountGive) {
+async function matchTrade(symbolGet, amountGet, symbolGive, amountGive) {
   var orders = await bursalib.listPairOrders(symbolGet, symbolGive, 0);
-  // if (priceTokenGet == 0) {
+  // if (priceOfTokenGet == 0) {
     var tGive = await bursalib.tokenFromSymbol(symbolGive);
 
     var o;
@@ -219,12 +222,17 @@ async function parseInput(data) {
       if (word.length > 1) {
         try {
           web3.eth.personal.unlockAccount(acc0, word[1]);
-          console.log('Account ' + acc0 + ' unlocked.');
+          console.log('Unlocking account ' + acc0 + '.');
         } catch (e) {
           console.log('Failed to unlock.');
         }
       } else {
-        web3.eth.personal.unlockAccount(acc0, '');
+        try {
+          web3.eth.personal.unlockAccount(acc0, '');
+          console.log('Unlocking account ' + acc0 + '.');
+        } catch (e) {
+          console.log('Failed to unlock.');
+        }
       }
     break;
 
@@ -250,25 +258,33 @@ async function parseInput(data) {
 
 // 4.
     case 'will':
-      if (word[1] == 'trade' || word[1] == 't') {
-        if (word.length > 6 && word[4] == 'for') {
-          var tokenGet = await bursalib.tokenFromSymbol(word[6]);
-          var tokenGive = await bursalib.tokenFromSymbol(word[3]);
-          await makeOrder(tokenGet, parseFloat(word[5]), tokenGive, parseFloat(word[2]));
-        }
-      }
       if (word[1] == 'buy' || word[1] == 'b') {
-        if (word.length > 6 && word[4] == 'price') {
-          var tokenGet = await bursalib.tokenFromSymbol(word[6]);
-          var tokenGive = await bursalib.tokenFromSymbol(word[3]);
-          await makeOrder(tokenGet, parseFloat(word[5]), tokenGive, parseFloat(word[2]));
+        if (word.length > 6) {
+          var tokenGet = await bursalib.tokenFromSymbol(word[3]);
+          var tokenGive = await bursalib.tokenFromSymbol(word[6]);
+          if ((word[4] == 'price' || word[4] == 'at')) {
+            var amountTokenGet = parseFloat(word[2]);
+            var priceOfTokenGet = parseFloat(word[5]);
+            await makeOrder(tokenGet, amountTokenGet, tokenGive, priceOfTokenGet * amountTokenGet);
+          }
+          else if (word[4] == 'for') {
+            await makeOrder(tokenGet, parseFloat(word[2]), tokenGive, parseFloat(word[5]));
+          }
         }
       }
-      if (word[1] == 'sell' || word[1] == 's') {
-        if (word.length > 6 && word[4] == 'price') {
+      if (word[1] == 'sell' || word[1] == 's' ||
+         word[1] == 'trade' || word[1] == 't') {
+        if (word.length > 6) {
           var tokenGet = await bursalib.tokenFromSymbol(word[6]);
           var tokenGive = await bursalib.tokenFromSymbol(word[3]);
-          await makeOrder(tokenGet, parseFloat(word[5]), tokenGive, parseFloat(word[2]));
+          if ((word[4] == 'price' || word[4] == 'at')) {
+            var amountTokenGet = parseFloat(word[2]);
+            var priceOfTokenGet = parseFloat(word[5]);
+            await makeOrder(tokenGet, priceOfTokenGet * amountTokenGet, tokenGive, amountTokenGet);
+          }
+          else if (word[4] == 'for') {
+            await makeOrder(tokenGet, parseFloat(word[5]), tokenGive, parseFloat(word[2]));
+          }
         }
       }
     break;
@@ -280,22 +296,22 @@ async function parseInput(data) {
       }
     case 'buy':
       // if (word.length > 5 && word[3] == 'price') {
-      //   await matchBuy(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
+      //   await matchTrade(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
       // }
       // else
       if (word.length > 2) {
-        await matchBuy('ether', 0, word[2], parseFloat(word[1]));
+        await matchTrade('ether', 0, word[2], parseFloat(word[1]));
       }
     break;
 
     case 's':
     case 'sell':
       // if (word.length > 5 && word[3] == 'price') {
-      //   await matchBuy(word[2], parseFloat(word[1]), word[5], parseFloat(word[4]));
+      //   await matchTrade(word[2], parseFloat(word[1]), word[5], parseFloat(word[4]));
       // }
       // else
       if (word.length > 2) {
-        await matchBuy(word[2], parseFloat(word[1]), 'ether', 0);
+        await matchTrade(word[2], parseFloat(word[1]), 'ether', 0);
       }
     break;
 
@@ -335,31 +351,45 @@ var current = null;
 async function main() {
   console.log('Connecting to Ethereum network...');
   // try {
-    // await bursalib.connect();
-    console.log(bursalib.help0);
+  async function connect() {
+    web3 = bursalib.web3;
+    // acc0 = bursalib.acc0;
+    // gasPrice = bursalib.gasPrice;
+    // data = bursalib.data;
+    // console.log(acc0);
+    acc = await web3.eth.getAccounts();
+    web3.eth.defaultAccount = acc[0];
+    acc0 = web3.eth.defaultAccount;
+    web3.eth.coinbase = acc0;
+    bursa = await new web3.eth.Contract(compiled.bursa_abi, deployed.bursa_address,
+        { from: acc0, gasPrice: gasPrice });
+  }
+  await connect();
 
-    process.stdin.resume();
-    process.stdin.on('data', function(data) {
-      prompt.emit(current, data.toString().trim());
-      // process.stdout.write('> ');
-    });
-    prompt.on(':new', function(name) {
-      current = name;
-    });
-    prompt.on(':end', function(){
-      process.stdout.cursorTo(0)
-      process.stdin.pause();
-    });
-    prompt.emit(':new', 'commander');
-    prompt.on('commander', async function(data) {
-      if (data.toString().trim() == "q" || data.toString().trim() == ":q" || data.toString().trim() == "quit" || data.toString().trim() == "exit") {
-        prompt.emit(':end');
-        return;
-      }
-      process.stdout.cursorTo(0)
-      await parseInput(data);
-      await prompt.emit(':new', 'commander');
-    });
+  console.log(bursalib.help0);
+
+  process.stdin.resume();
+  process.stdin.on('data', function(data) {
+    prompt.emit(current, data.toString().trim());
+    // process.stdout.write('> ');
+  });
+  prompt.on(':new', function(name) {
+    current = name;
+  });
+  prompt.on(':end', function(){
+    process.stdout.cursorTo(0)
+    process.stdin.pause();
+  });
+  prompt.emit(':new', 'commander');
+  prompt.on('commander', async function(data) {
+    if (data.toString().trim() == "q" || data.toString().trim() == ":q" || data.toString().trim() == "quit" || data.toString().trim() == "exit") {
+      prompt.emit(':end');
+      return;
+    }
+    process.stdout.cursorTo(0)
+    await parseInput(data);
+    await prompt.emit(':new', 'commander');
+  });
   // } catch (e) {
   //   console.log('Can\'t connect to Ethereum Web3');
   //   // console.log(e);

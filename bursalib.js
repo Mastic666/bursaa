@@ -36,7 +36,6 @@ list XYZ demand        - Show buy orders on XYZ tokens
 list XYZ TWT           - Show orders on XYZ TWT pair
 list XYZ TWT supply    - Show orders selling XYZ for TWT
 list XYZ TWT demand    - Show orders buying XYZ for TWT
-orders                 - Show your own orders
 
 
 `
@@ -68,12 +67,14 @@ trade 50 TWT for 100 XYZ             - Trade 50 TWT for not less than 100 XYZ
 trade 50 TWT price 2 XYZ             - Trade 50 TWT at price not less
                                        than 2 XYZ each
 
-will buy 100 XYZ price 0.001 ether   - Make order to buy 100 XYZ tokens with
-                                       price not more than 0.001
-will sell 100 XYZ price 0.001 ether  - Make order to sell 100 XYZ tokens with
-                                       price not more than 0.001
-will trade 50 TWT for 100 XYZ        - Make order to trade 50 TWT for
+will buy 100 XYZ price 0.001 ether   - Place order to buy 100 XYZ tokens
+                                       with price not more than 0.001
+will sell 100 XYZ price 0.001 ether  - Place order to sell 100 XYZ tokens
+                                       with price not more than 0.001
+will trade 50 TWT for 100 XYZ        - Place order to trade 50 TWT for
                                        not less than 100 XYZ
+orders                               - Show orders you placed
+cancel 1                             - Cancel order #1
 
 
 `
@@ -124,8 +125,8 @@ var acc0;
 var gasPrice = '20000000000';
 exports.acc0 = acc0;
 exports.gasPrice = gasPrice;
+exports.connect = connect;
 
-connect();
 async function connect() {
   acc = await web3.eth.getAccounts();
   web3.eth.defaultAccount = acc[0];
@@ -134,7 +135,7 @@ async function connect() {
   bursa = await new web3.eth.Contract(compiled.bursa_abi, deployed.bursa_address,
       { from: acc0, gasPrice: gasPrice });
 }
-
+connect();
 
 var data;
 try {
@@ -473,8 +474,8 @@ async function getOrderData(o) {
   out.decimalsTokenGive = tGive.decimals;
   out.amountGet = (o.amountGet / tGet.decimals).toFixed(6);
   out.amountGive = (o.amountGive / tGive.decimals).toFixed(6);
-  out.priceTokenGet = (out.amountGive / out.amountGet).toFixed(6);
-  out.priceTokenGive = (out.amountGet / out.amountGive).toFixed(6);
+  out.priceOfTokenGet = (out.amountGive / out.amountGet).toFixed(6);
+  out.priceOfTokenGive = (out.amountGet / out.amountGive).toFixed(6);
   return out;
 }
 async function showOrder(o, amountLeft, order_field_index) {
@@ -484,12 +485,12 @@ async function showOrder(o, amountLeft, order_field_index) {
   // var amountGive = amountLeft / o.amountGet * o.amountGive;
   if (order_field_index == 0) {
     console.log('[' + o.event.user.slice(0,6) + '..] WILL BUY \t' + o.amountGet
-    + ' ' + o.symbolGet + '\tat ' + o.priceTokenGet +
+    + ' ' + o.symbolGet + '\tat ' + o.priceOfTokenGet +
      ' ' + o.symbolGive + ' each');
   }
   else if (order_field_index == 2) {
     console.log('[' + o.event.user.slice(0,6) + '..] WILL SELL\t' + o.amountGive
-    + ' ' + o.symbolGive + '\tat ' + o.priceTokenGive +
+    + ' ' + o.symbolGive + '\tat ' + o.priceOfTokenGive +
      ' ' + o.symbolGet + ' each');
   }
   else if (order_field_index == 777) {
@@ -620,10 +621,10 @@ async function collectOrders(block) {
   data.block = blockNumber;
 
   data.orders = data.orders.sort(function(a, b) {
-    if (a.priceTokenGet == b.priceTokenGet) {
+    if (a.priceOfTokenGet == b.priceOfTokenGet) {
       return a.event.block - b.event.block;
     }
-    return b.priceTokenGet - a.priceTokenGet;
+    return b.priceOfTokenGet - a.priceOfTokenGet;
   });
 
 
