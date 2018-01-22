@@ -1,6 +1,6 @@
 {
   "name": "bursa",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "Bursa trader terminal",
   "main": "index.js",
   "scripts": {
