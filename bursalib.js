@@ -119,6 +119,10 @@ const fs = require('fs');
 const Web3 = require('web3');
 var web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
 exports.web3 = web3;
+// var web3;
+// if (typeof web3 !== 'undefined') {
+//   web3 = new Web3(Web3.givenProvider || web3.currentProvider);
+// }
 
 var acc;
 var acc0;
@@ -386,72 +390,6 @@ async function approveBursa(symbol, amount) {
 
 
 
-// 3. DEPOSIT, WITHDRAW, BALANCE
-exports.depositEther = depositEther;
-exports.withdrawEther = withdrawEther;
-exports.showBalance = showBalance;
-
-async function depositEther(amount) {
-  if (await bursaOffline()) return;
-  // var etherBalance = await web3.eth.getBalance(acc0);
-  // // var estimate = bursa.options.gasPrice * 25000;
-  // // etherBalance -= estimate;
-  // if (toWei(amount) > etherBalance) {
-  //   console.log(toWei(amount));
-  //   console.log(etherBalance);
-  //   console.log('You only have ' + fromWei(etherBalance));
-  //   return;
-  // }
-  console.log('Depositing ' + amount + ' ether..');
-  var tx = await web3.eth.sendTransaction({from:acc0, to:deployed.bursa_address, value:toWei(amount), gas:100000});
-  console.log('Sent ' + amount + ' ether ' + '  (', tx.gasUsed, 'gas )');
-  var etherBalance = await web3.eth.getBalance(acc0);
-  var deposit = await bursa.methods.fundsOf(acc0).call({ from: acc0 });
-  console.log('BALANCES of [' + acc0 + ']:\nether: ' + fromWei(deposit) + ' ether on trade account\n       ' + fromWei(etherBalance) + ' ether on main account');
-}
-
-
-async function withdrawEther(amount) {
-  if (await bursaOffline()) return;
-  var etherBalance = await web3.eth.getBalance(acc0);
-  console.log('Withdrawing ' + amount + ' ether..');
-  var tx = await bursa.methods.withdraw(toWei(amount)).send({ from: acc0, gas: 1000000 });
-  console.log('Money was withdrawn.');
-  // console.log(tx.events.Withdraw);
-  var etherBalance = await web3.eth.getBalance(acc0);
-  var deposit = await bursa.methods.fundsOf(acc0).call({ from: acc0 });
-  console.log('BALANCES of [' + acc0 + ']:\nether: ' + fromWei(deposit) + ' ether on trade account\n       ' + fromWei(etherBalance) + ' ether on main account');
-}
-
-async function showBalance() {
-  if (await bursaOffline()) return;
-  var etherBalance = await web3.eth.getBalance(acc0);
-  var deposit = await bursa.methods.fundsOf(acc0).call({ from: acc0 });
-  console.log('BALANCES of [' + acc0 + ']:\nether: ' + fromWei(deposit) + ' ether on trade account\n       ' + fromWei(etherBalance) + ' ether on main account');
-
-  data.tokens.forEach(async function (t) {
-    var token = await new web3.eth.Contract(compiled.erc20_abi, t.address, { from: acc0, gasPrice: gasPrice });
-    var b = await token.methods.balanceOf(acc0).call({ from: acc0 });
-
-    var allowance = await token.methods.allowance(acc0, deployed.bursa_address).call({ from: acc0 });
-    var not_allowed = '';
-    if (b > allowance) {
-      not_allowed = '  (' + (b - allowance) / t.decimals + ' not approved )';
-      b = allowance;
-      console.log(t.symbol + ': ' + b / t.decimals + not_allowed);
-    }
-    else {
-      console.log(t.symbol + ': ' + b / t.decimals);
-    }
-  });
-}
-
-
-
-
-
-
-
 
 // 2. LIST ORDERS
 exports.listTokenOrders = listTokenOrders;
@@ -481,30 +419,31 @@ async function getOrderData(o) {
 async function showOrder(o, amountLeft, order_field_index) {
   var tGet = await tokenFromAddress(o.tokenGet);
   var tGive = await tokenFromAddress(o.tokenGive);
-  // var amountGet = amountLeft;
-  // var amountGive = amountLeft / o.amountGet * o.amountGive;
+  var amountLeftGet = (amountLeft / o.decimalsTokenGet).toFixed(6);
+  var amountLeftGive = (amountLeft * o.amountGive / o.event.amountGet).toFixed(6);
+
   if (order_field_index == 0) {
-    console.log('[' + o.event.user.slice(0,6) + '..] WILL BUY \t' + o.amountGet
+    console.log('[' + o.event.user.slice(0,6) + '..] WILL BUY \t' + amountLeftGet
     + ' ' + o.symbolGet + '\tat ' + o.priceOfTokenGet +
      ' ' + o.symbolGive + ' each');
   }
   else if (order_field_index == 2) {
-    console.log('[' + o.event.user.slice(0,6) + '..] WILL SELL\t' + o.amountGive
+    console.log('[' + o.event.user.slice(0,6) + '..] WILL SELL\t' + amountLeftGive
     + ' ' + o.symbolGive + '\tat ' + o.priceOfTokenGive +
      ' ' + o.symbolGet + ' each');
   }
-  else if (order_field_index == 777) {
+  else if (order_field_index == 999) {   // all orders
     console.log('[' + o.event.user.slice(0,6) + '..] WILL TRADE \t'
-    + o.amountGive + ' ' + o.symbolGive
+    + amountLeftGive + ' ' + o.symbolGive
     + '\tfor '
-    + o.amountGet + ' ' + o.symbolGet
+    + amountLeftGet + ' ' + o.symbolGet
     );
   }
   else if (order_field_index > 1000) {
     console.log('[' + (order_field_index - 1000) + ']\tWILL TRADE \t'
-    + o.amountGive + ' ' + o.symbolGive
+    + amountLeftGive + ' ' + o.symbolGive
     + '\tfor '
-    + o.amountGet + ' ' + o.symbolGet
+    + amountLeftGet + ' ' + o.symbolGet
     );
   }
 }
@@ -575,7 +514,7 @@ async function listAllOrders() {
       var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
       o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
       var ord = await getOrderData(o);
-      await showOrder(ord, amountLeft, 777);
+      await showOrder(ord, amountLeft, 999);
     }
     ++i;
   }
@@ -610,12 +549,12 @@ async function collectOrders(block) {
   var i=0;
   while (i < orders.length) {
     var o = orders[i].returnValues;
-      var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
-      o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
-      if (amountLeft > 0) {
-        var ord = await getOrderData(o);
-        data.orders.push(ord);
-      }
+    var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
+    o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
+    if (amountLeft > 0) {
+      var ord = await getOrderData(o);
+      data.orders.push(ord);
+    }
     ++i;
   }
   data.block = blockNumber;
@@ -633,7 +572,216 @@ async function collectOrders(block) {
 
 
 
-// var web3;
-// if (typeof web3 !== 'undefined') {
-//   web3 = new Web3(Web3.givenProvider || web3.currentProvider);
-// }
+// 3. DEPOSIT, WITHDRAW, BALANCE
+exports.depositEther = depositEther;
+exports.withdrawEther = withdrawEther;
+exports.showBalance = showBalance;
+
+async function depositEther(amount) {
+  if (await bursaOffline()) return;
+  // var etherBalance = await web3.eth.getBalance(acc0);
+  // // var estimate = bursa.options.gasPrice * 25000;
+  // // etherBalance -= estimate;
+  // if (toWei(amount) > etherBalance) {
+  //   console.log(toWei(amount));
+  //   console.log(etherBalance);
+  //   console.log('You only have ' + fromWei(etherBalance));
+  //   return;
+  // }
+  console.log('Depositing ' + amount + ' ether..');
+  var tx = await web3.eth.sendTransaction({from:acc0, to:deployed.bursa_address, value:toWei(amount), gas:100000});
+  console.log('Sent ' + amount + ' ether ' + '  (', tx.gasUsed, 'gas )');
+  var etherBalance = await web3.eth.getBalance(acc0);
+  var deposit = await bursa.methods.fundsOf(acc0).call({ from: acc0 });
+  console.log('BALANCES of [' + acc0 + ']:\nether: ' + fromWei(deposit) + ' ether on trade account\n       ' + fromWei(etherBalance) + ' ether on main account');
+}
+
+
+async function withdrawEther(amount) {
+  if (await bursaOffline()) return;
+  var etherBalance = await web3.eth.getBalance(acc0);
+  console.log('Withdrawing ' + amount + ' ether..');
+  var tx = await bursa.methods.withdraw(toWei(amount)).send({ from: acc0, gas: 1000000 });
+  console.log('Money was withdrawn.');
+  // console.log(tx.events.Withdraw);
+  var etherBalance = await web3.eth.getBalance(acc0);
+  var deposit = await bursa.methods.fundsOf(acc0).call({ from: acc0 });
+  console.log('BALANCES of [' + acc0 + ']:\nether: ' + fromWei(deposit) + ' ether on trade account\n       ' + fromWei(etherBalance) + ' ether on main account');
+}
+
+async function showBalance() {
+  if (await bursaOffline()) return;
+  var etherBalance = await web3.eth.getBalance(acc0);
+  var deposit = await bursa.methods.fundsOf(acc0).call({ from: acc0 });
+  console.log('BALANCES of [' + acc0 + ']:\nether: ' + fromWei(deposit) + ' ether on trade account\n       ' + fromWei(etherBalance) + ' ether on main account');
+
+  data.tokens.forEach(async function (t) {
+    var token = await new web3.eth.Contract(compiled.erc20_abi, t.address, { from: acc0, gasPrice: gasPrice });
+    var b = await token.methods.balanceOf(acc0).call({ from: acc0 });
+
+    var allowance = await token.methods.allowance(acc0, deployed.bursa_address).call({ from: acc0 });
+    var not_allowed = '';
+    if (b > allowance) {
+      not_allowed = '  (' + ((b - allowance) / t.decimals).toFixed(6) + ' not approved )';
+      b = allowance;
+      console.log(t.symbol + ': ' + (b / t.decimals).toFixed(6) + not_allowed);
+    }
+    else {
+      console.log(t.symbol + ': ' + (b / t.decimals).toFixed(6));
+    }
+  });
+}
+
+
+
+
+// 4. Make orders, trade
+exports.makeOrder = makeOrder;
+exports.matchOrders = matchOrders;
+exports.makeTrade = makeTrade;
+
+async function makeOrder(tokenGet, amountGet, tokenGive, amountGive) {
+  if (await bursaOffline()) return;
+  // check balance
+  if (tokenGive.symbol == 'ether') {
+
+  }
+  else {
+    var token = await new web3.eth.Contract(compiled.erc20_abi, tokenGive.address, { from: acc0, gasPrice: gasPrice });
+    var b = await token.methods.balanceOf(acc0).call({ from: acc0 });
+    if (b < amountGive * tokenGive.decimals) {
+      console.log('Not enough ' + tokenGive.symbol + ': ' + b / tokenGive.decimals);
+      return;
+    }
+  }
+  console.log('Making order to get ' + amountGet + ' ' + tokenGet.symbol + ' for ' + amountGive + ' ' + tokenGive.symbol + '..');
+  var tx = await bursa.methods.order(tokenGet.address, amountGet * tokenGet.decimals,
+  tokenGive.address, amountGive * tokenGive.decimals ).send({ from: acc0 });
+  console.log('Order placed (' + fromWei(tx.gasUsed * bursa.options.gasPrice) + ' ether paid)');
+}
+
+
+
+
+
+
+
+
+
+
+
+async function matchOrders(symbol1, amount1, symbol2, amount2) {
+  if (amount1 == 0) {
+    console.log('ORDERS THAT GIVE ' + symbol2 + ' for ' + symbol1 + ':');
+    var orders = await listPairOrders(symbol1, symbol2, 0);
+    console.log();
+    var t2 = await tokenFromSymbol(symbol2);
+    var o;
+    var rest = amount2 * t2.decimals;
+    var i=0;
+    while (i < orders.length && rest) {
+      console.log('Trying order #' + i+1 + ', amount to buy:', rest/t2.decimals, t2.symbol);
+      ord = orders[i];
+      var o = ord.event;
+
+      var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
+      o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
+
+      showOrder(ord, amountLeft, 999);
+      console.log(amountLeft);
+      console.log(rest);
+
+      rest = (await makeTrade(ord, rest));
+      ++i;
+    }
+  }
+  else if (amount2 == 0) {
+    // console.log('ORDERS THAT GIVE ' + symbolGive + ' for ' + symbol1 + ':');
+    // var orders = await listPairOrders(symbol1, symbolGive, 0);
+    // console.log();
+    // var tGet = await tokenFromSymbol(symbol1);
+    // var o;
+    // var rest = amountGet * tGet.decimals; //  * ord.priceOfTokenGive
+    // var i=0;
+    // while (i < orders.length && rest) {
+    //   console.log('Trying order #' + i + ', amount to sell:', rest/tGet.decimals, tGet.symbol);
+    //   ord = orders[i];
+    //   rest = amountGet * ord.priceOfTokenGive * tGet.decimals;
+    //   var o = ord.event;
+    //
+    //   var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
+    //   o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
+    //   var amountLeftGive = amountLeft;
+    //   // console.log('amountLeftGet',amountLeftGet);
+    //
+    //   showOrder(ord, amountLeftGive, 999);
+    //   console.log('rest ' + amountGet / ord.priceOfTokenGet * tGet.decimals);
+    //   // rest = await makeTrade(ord, amountGet * ord.priceOfTokenGet * tGet.decimals);
+    //   ++i;
+    // }
+  }
+  else {
+    // console.log('ORDERS THAT GIVE ' + symbol1 + ' for ' + symbol2 + ':');
+    // var orders = await listPairOrders(symbol2, symbol1, 0);
+    // console.log();
+    // var t2 = await tokenFromSymbol(symbol2);
+    // var o;
+    // var rest = amount2 * t2.decimals;
+    // var i=0;
+
+    // while (i < orders.length && rest) {
+    //   console.log('Trying order #' + i+1 + ', amount to buy:', rest/t2.decimals, t2.symbol);
+    //   ord = orders[i];
+    //   var o = ord.event;
+    //
+    //   var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
+    //   o.tokenGive, o.amount2, o.block, o.user).call({ from: acc0 });
+    //
+    //   showOrder(ord, amountLeft, 999);
+    //
+    //   rest = await makeTrade(ord, rest);
+    //   ++i;
+    // }
+  }
+}
+
+async function makeTrade(o, willGet) {
+  var canGive = await bursa.methods.canTrade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
+    o.event.block, o.event.user, willGet).call({ from: acc0, gas: 1000000 });
+
+  console.log('can give  ' + canGive / o.decimalsTokenGive);
+  if (canGive == 0) return willGet;
+  var restGive;
+
+  var canGet = canGive * o.priceOfTokenGet;
+  var willGive = willGet / canGet * canGive;
+
+
+  // if (canGet > willGet) {
+  //   willGet = canGet;
+  // } else {
+  //   restGive = willGet - canGet;
+  // }
+
+  if (willGive > canGive) {
+    willGive = canGive;
+  }
+
+  if (canGet > willGet) {
+    restGive = 0;
+  } else {
+    restGive = willGet - canGet;
+    willGet = canGet;
+  }
+
+  console.log('can get   ' + canGet / o.decimalsTokenGet);
+  console.log('will give ' + willGive / o.decimalsTokenGet, o.symbolGet);
+  console.log('will get  ' + willGet / o.decimalsTokenGive, o.symbolGive);
+  console.log('rest to give ' + restGive / o.decimalsTokenGive, o.symbolGive);
+
+  var tx = await bursa.methods.trade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
+    o.event.block, o.event.user, willGive, 0).send({ from: acc0, gas: 1000000 });
+  console.log('Trade accomplished. ', willGet / o.decimalsTokenGive, o.symbolGive, 'for', willGive / o.decimalsTokenGet, o.symbolGet);
+
+  return restGive;
+}

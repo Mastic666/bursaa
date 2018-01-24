@@ -58,85 +58,6 @@ async function canTrade(order, factAmountGet, from) {
   // return b;
 }
 
-async function makeTrade(o, willGet) {
-  console.log(o.event);
-  var canGive = await bursa.methods.canTrade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
-    o.event.block, o.event.user, willGet).call({ from: acc0, gas: 1000000 });
-  if (canGive == 0) return willGet;
-
-  var canGet = canGive * o.priceOfTokenGet;
-  var willGive = willGet / canGet * canGive;
-  var restGive = willGive;
-  if (willGive > canGive) {
-    willGive = canGive;
-  }
-  restGive -= willGive;
-
-  console.log('can give ' + canGive);
-  console.log('can get  ' + canGet);
-  console.log('wil get  ' + willGet);
-  console.log('wil give ' + willGive);
-  console.log('rest     ' + restGive);
-
-  var tx = await bursa.methods.trade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
-    o.event.block, o.event.user, willGive, 0).send({ from: acc0, gas: 1000000 });
-    console.log(tx);
-
-  return restGive;
-}
-
-
-
-async function matchTrade(symbolGet, amountGet, symbolGive, amountGive) {
-  var orders = await bursalib.listPairOrders(symbolGet, symbolGive, 0);
-  // if (priceOfTokenGet == 0) {
-    var tGive = await bursalib.tokenFromSymbol(symbolGive);
-
-    var o;
-    var rest = amountGive * tGive.decimals;
-    console.log(rest);
-    var i=0;
-    while (i < orders.length && rest) {
-      o = orders[i];
-      // console.log(o);
-      rest = await makeTrade(o, rest);
-      ++i;
-    }
-  // }
-}
-
-
-
-
-async function matchTrade(tokenGet, amountGet, tokenGive, amountGive) {
-  var orders = await bursalib.listPairOrders(tokenGet, tokenGive, 0);
-  console.log(orders);
-}
-
-
-async function makeOrder(tokenGet, amountGet, tokenGive, amountGive) {
-  if (await bursalib.bursaOffline()) return;
-
-  // check balance
-  if (tokenGive.symbol == 'ether') {
-
-  }
-  else {
-    var token = await new web3.eth.Contract(compiled.erc20_abi, tokenGive.address, { from: acc0, gasPrice: gasPrice });
-    var b = await token.methods.balanceOf(acc0).call({ from: acc0 });
-    if (b < amountGive * tokenGive.decimals) {
-      console.log('Not enough ' + tokenGive.symbol + ': ' + b / tokenGive.decimals);
-      return;
-    }
-  }
-
-  console.log('Making order to get ' + amountGet + ' ' + tokenGet.symbol + ' for ' + amountGive + ' ' + tokenGive.symbol + '..');
-  var tx = await bursa.methods.order(tokenGet.address, amountGet * tokenGet.decimals,
-  tokenGive.address, amountGive * tokenGive.decimals ).send({ from: acc0 });
-  console.log('Order placed (' + fromWei(tx.gasUsed * bursa.options.gasPrice) + ' ether paid)');
-}
-
-
 
 
 // CONSOLE
@@ -253,37 +174,39 @@ async function parseInput(data) {
     case 'w':
     case 'withdraw':
       if (word.length == 2) {
-        await bursalub.withdrawEther(parseFloat(word[1]));
+        await bursalib.withdrawEther(parseFloat(word[1]));
       }
 
 // 4.
     case 'will':
       if (word[1] == 'buy' || word[1] == 'b') {
-        if (word.length > 6) {
+        if (word.length >= 6) {
+          if (word.length == 6) word[6] = 'ether';
           var tokenGet = await bursalib.tokenFromSymbol(word[3]);
           var tokenGive = await bursalib.tokenFromSymbol(word[6]);
+          var amountTokenGet = parseFloat(word[2]);
           if ((word[4] == 'price' || word[4] == 'at')) {
-            var amountTokenGet = parseFloat(word[2]);
             var priceOfTokenGet = parseFloat(word[5]);
-            await makeOrder(tokenGet, amountTokenGet, tokenGive, priceOfTokenGet * amountTokenGet);
+            await bursalib.makeOrder(tokenGet, amountTokenGet, tokenGive, priceOfTokenGet * amountTokenGet);
           }
           else if (word[4] == 'for') {
-            await makeOrder(tokenGet, parseFloat(word[2]), tokenGive, parseFloat(word[5]));
+            await bursalib.makeOrder(tokenGet, amountTokenGet, tokenGive, parseFloat(word[5]));
           }
         }
       }
       if (word[1] == 'sell' || word[1] == 's' ||
          word[1] == 'trade' || word[1] == 't') {
-        if (word.length > 6) {
+        if (word.length >= 6) {
+          if (word.length == 6) word[6] = 'ether';
           var tokenGet = await bursalib.tokenFromSymbol(word[6]);
           var tokenGive = await bursalib.tokenFromSymbol(word[3]);
           if ((word[4] == 'price' || word[4] == 'at')) {
             var amountTokenGet = parseFloat(word[2]);
             var priceOfTokenGet = parseFloat(word[5]);
-            await makeOrder(tokenGet, priceOfTokenGet * amountTokenGet, tokenGive, amountTokenGet);
+            await bursalib.makeOrder(tokenGet, priceOfTokenGet * amountTokenGet, tokenGive, amountTokenGet);
           }
           else if (word[4] == 'for') {
-            await makeOrder(tokenGet, parseFloat(word[5]), tokenGive, parseFloat(word[2]));
+            await bursalib.makeOrder(tokenGet, parseFloat(word[5]), tokenGive, parseFloat(word[2]));
           }
         }
       }
@@ -296,48 +219,38 @@ async function parseInput(data) {
       }
     case 'buy':
       // if (word.length > 5 && word[3] == 'price') {
-      //   await matchTrade(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
+      //   await matchOrders(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
       // }
       // else
       if (word.length > 2) {
-        await matchTrade('ether', 0, word[2], parseFloat(word[1]));
+        await bursalib.matchOrders('ether', 0, word[2], parseFloat(word[1]));
       }
     break;
 
     case 's':
     case 'sell':
       // if (word.length > 5 && word[3] == 'price') {
-      //   await matchTrade(word[2], parseFloat(word[1]), word[5], parseFloat(word[4]));
+      //   await matchOrders(word[2], parseFloat(word[1]), word[5], parseFloat(word[4]));
       // }
       // else
       if (word.length > 2) {
-        await matchTrade(word[2], parseFloat(word[1]), 'ether', 0);
+        await bursalib.matchOrders(word[2], parseFloat(word[1]), 'ether', 0);
       }
     break;
 
-    case 't':
+    // case 't':
     case 'trade':
       if (word.length > 5 && word[3] == 'for') {
-        await matchTrade(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
+        await bursalib.matchOrders(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
       }
     break;
 
 // 5.
     case 'gasprice':
-      // if (word.length > 5 && word[3] == 'give') {
-      //   var tokenGet = await tokenFromSymbol(word[2]);
-      //   var tokenGive = await tokenFromSymbol(word[5]);
-      //   await makeOrder(tokenGet, parseFloat(word[1]), tokenGive, parseFloat(word[4]));
-      // }
     break;
 
     case 'c':
     case 'collect':
-      // if (word.length > 5 && word[3] == 'give') {
-      //   var tokenGet = await tokenFromSymbol(word[2]);
-      //   var tokenGive = await tokenFromSymbol(word[5]);
-      //   await makeOrder(tokenGet, parseFloat(word[1]), tokenGive, parseFloat(word[4]));
-      // }
     break;
 
     default:

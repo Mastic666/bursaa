@@ -1,1 +1,1 @@
-exports.bursa_address = '0x506842E27d28423a566600FA95eF21c682ee1f97';
+exports.bursa_address = '0x0A82246c13092645298aCc06D8290e82c63A80bD';
