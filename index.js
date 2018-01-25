@@ -182,15 +182,11 @@ async function parseInput(data) {
       if (word[1] == 'buy' || word[1] == 'b') {
         if (word.length >= 6) {
           if (word.length == 6) word[6] = 'ether';
-          var tokenGet = await bursalib.tokenFromSymbol(word[3]);
-          var tokenGive = await bursalib.tokenFromSymbol(word[6]);
-          var amountTokenGet = parseFloat(word[2]);
           if ((word[4] == 'price' || word[4] == 'at')) {
-            var priceOfTokenGet = parseFloat(word[5]);
-            await bursalib.makeOrder(tokenGet, amountTokenGet, tokenGive, priceOfTokenGet * amountTokenGet);
+            bursalib.makeOrderBuyAtPrice(parseFloat(word[2]), word[3], parseFloat(word[5]), word[6]);
           }
           else if (word[4] == 'for') {
-            await bursalib.makeOrder(tokenGet, amountTokenGet, tokenGive, parseFloat(word[5]));
+            await bursalib.makeOrder(parseFloat(word[2]), word[3], parseFloat(word[5]), word[6]);
           }
         }
       }
@@ -198,15 +194,11 @@ async function parseInput(data) {
          word[1] == 'trade' || word[1] == 't') {
         if (word.length >= 6) {
           if (word.length == 6) word[6] = 'ether';
-          var tokenGet = await bursalib.tokenFromSymbol(word[6]);
-          var tokenGive = await bursalib.tokenFromSymbol(word[3]);
           if ((word[4] == 'price' || word[4] == 'at')) {
-            var amountTokenGet = parseFloat(word[2]);
-            var priceOfTokenGet = parseFloat(word[5]);
-            await bursalib.makeOrder(tokenGet, priceOfTokenGet * amountTokenGet, tokenGive, amountTokenGet);
+            bursalib.makeOrderSellAtPrice(parseFloat(word[2]), word[3], parseFloat(word[5]), word[6]);
           }
           else if (word[4] == 'for') {
-            await bursalib.makeOrder(tokenGet, parseFloat(word[5]), tokenGive, parseFloat(word[2]));
+            await bursalib.makeOrder(parseFloat(word[5]), word[6], parseFloat(word[2]), word[3]);
           }
         }
       }
@@ -241,7 +233,7 @@ async function parseInput(data) {
     // case 't':
     case 'trade':
       if (word.length > 5 && word[3] == 'for') {
-        await bursalib.matchOrders(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
+        await bursalib.matchOrders(word[2], parseFloat(word[1]), word[5], parseFloat(word[4]));
       }
     break;
 
