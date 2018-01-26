@@ -61,17 +61,16 @@ buy 100 XYZ with TWT                 - Buy 100 XYZ tokens at market price, pay w
 sell 100 XYZ                         - Sell 100 XYZ tokens at market price
 buy 100 XYZ with TWT                 - Sell 100 XYZ tokens at market price, get TWT
 
-buy 100 XYZ price 0.001 ether        - Buy 100 XYZ tokens at price
+buy 100 XYZ at 0.001 ether           - Buy 100 XYZ tokens at price
                                        not more than 0.001 ether
-sell 100 XYZ price 0.001 ether       - Sell 100 XYZ tokens at price
+sell 100 XYZ at 0.001 ether          - Sell 100 XYZ tokens at price
                                        not less than 0.001 ether
-trade 50 TWT for 100 XYZ             - Trade 50 TWT for not less than 100 XYZ
-trade 50 TWT price 2 XYZ             - Trade 50 TWT at price not less
+trade 50 TWT at 2 XYZ                - Trade 50 TWT at price not less
                                        than 2 XYZ each
 
-will buy 100 XYZ price 0.001 ether   - Place order to buy 100 XYZ tokens
+will buy 100 XYZ at 0.001 ether      - Place order to buy 100 XYZ tokens
                                        with price not more than 0.001
-will sell 100 XYZ price 0.001 ether  - Place order to sell 100 XYZ tokens
+will sell 100 XYZ at 0.001 ether     - Place order to sell 100 XYZ tokens
                                        with price not more than 0.001
 will trade 50 TWT for 100 XYZ        - Place order to trade 50 TWT for
                                        not less than 100 XYZ
@@ -114,9 +113,11 @@ module.exports.showHelp = (word) => {
 
 
 var compiled = require('./compiled.js');
-var deployed = require('./deployed.js');
 
-
+const BigNumber = require('bignumber.js');
+function big(value) {
+  return new BigNumber(value);
+}
 const fs = require('fs');
 const Web3 = require('web3');
 var web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
@@ -128,12 +129,40 @@ exports.web3 = web3;
 
 var acc;
 var acc0;
-var gasPrice = '20000000000';
+var gasPrice;
 exports.acc0 = acc0;
 exports.gasPrice = gasPrice;
 exports.connect = connect;
 
+var data;
+var data_file;
+var deployed;
+var deployed_file;
 async function connect() {
+  var network = await web3.eth.net.getNetworkType(function(){});
+  console.log('Connected', network, 'network.');
+
+  deployed_file = './deployed_' + network + '.js';
+  data_file = './data_' + network + '.json';
+  try {
+    deployed = require(deployed_file);
+    gasPrice = deployed.gas_price;
+    console.log(deployed);
+
+    data = require(data_file);
+    data.tokens.forEach(function (t) {
+      if (t.symbol == 'BUR') {
+        t.address = deployed.bursa_address;
+      }
+    });
+  } catch (e) {
+    data = Object();
+    data.tokens = [];
+    data.orders = [];
+    data.block = 0;
+  }
+  exports.data = data;
+
   acc = await web3.eth.getAccounts();
   web3.eth.defaultAccount = acc[0];
   acc0 = web3.eth.defaultAccount;
@@ -143,21 +172,7 @@ async function connect() {
 }
 connect();
 
-var data;
-try {
-  data = require('./data.json');
-  data.tokens.forEach(function (t) {
-    if (t.symbol == 'BUR') {
-      t.address = deployed.bursa_address;
-    }
-  });
-} catch (e) {
-  data = Object();
-  data.tokens = [];
-  data.orders = [];
-  data.block = 0;
-}
-exports.data = data;
+
 
 
 function toWei(amount) {
@@ -187,7 +202,7 @@ function zeroesDecimals(n) {
 }
 async function saveData() {
   var json = JSON.stringify(data);
-  fs.writeFile('data.json', json, 'utf8', function(err) {
+  fs.writeFile(data_file, json, 'utf8', function(err) {
     if (err) console.log('ERROR: Can\'t write to file');
   });
 }
@@ -210,7 +225,9 @@ exports.bursaOffline = bursaOffline;
 
 
 
-
+// TODO: USE BigNumber EVERYWHERE!  web3.fromWei(web3.toWei(new web3.BigNumber(1), 'ether'), 'ether').toNumber()
+//   let n = new web3.BigNumber((13.3 * 397));
+//   n = n.div(557);
 
 
 
@@ -649,18 +666,19 @@ exports.makeOrderBuyAtPrice = makeOrderBuyAtPrice;
 exports.makeOrderSellAtPrice = makeOrderSellAtPrice;
 exports.makeOrder = makeOrder;
 
-exports.matchOrders = matchOrders;
+exports.buyTokenAtPrice = buyTokenAtPrice;
+exports.sellTokenAtPrice = sellTokenAtPrice;
 exports.makeTrade = makeTrade;
 
 
 
-async function makeOrderBuyAtPrice(amountGet, symbolGet, priceGive, symbolGive) {
+async function makeOrderBuyAtPrice(amountGet, symbolGet, priceGive, priceSymbol) {
   var amountGive = priceGive * amountGet;
-  await makeOrder(amountGet, symbolGet, amountGive, symbolGive);
+  await makeOrder(amountGet, symbolGet, amountGive, priceSymbol);
 }
-async function makeOrderSellAtPrice(amountGive, symbolGive, priceGet, symbolGet) {
+async function makeOrderSellAtPrice(amountGive, symbolGive, priceGet, priceSymbol) {
   var amountGet = priceGet * amountGive;
-  await makeOrder(amountGet, symbolGet, amountGive, symbolGive);
+  await makeOrder(amountGet, priceSymbol, amountGive, symbolGive);
 }
 async function makeOrder(amountGet, symbolGet, amountGive, symbolGive) {
   var tokenGet = await tokenFromSymbol(symbolGet);
@@ -688,46 +706,117 @@ async function makeOrder(amountGet, symbolGet, amountGive, symbolGive) {
 
 
 
+async function buyTokenAtPrice(amountGet, symbolGet, maxPrice, priceSymbol) {
+  if (maxPrice == 0) maxPrice = Number.MAX_VALUE;
+  console.log(maxPrice);
 
-async function matchOrders(symbol1, amount1, symbol2, amount2) {
-  if (amount1 == 0) {
-    console.log('ORDERS THAT GIVE ' + symbol2 + ' for ' + symbol1 + ':');
-    var orders = await listPairOrders(symbol1, symbol2, 0);
-    console.log();
-    // var t1 = await tokenFromSymbol(symbol1);
-    var t2 = await tokenFromSymbol(symbol2);
-    var o;
-    // var rest = amount1 * t1.decimals;
-    var rest = amount2 * t2.decimals;
+  console.log(big('99'));
 
-    console.log('rest', rest);
-    var i=0;
-    while (i < orders.length && rest) {
-      console.log('Trying order #' + i+1 + ', amount to buy:', rest/t2.decimals, t2.symbol);
-      ord = orders[i];
-      var o = ord.event;
+  var t2 = await tokenFromSymbol(symbolGet);
+  console.log('ORDERS THAT GIVE ' + symbolGet + ' for ' + priceSymbol + ':');
+  var orders = await listPairOrders(priceSymbol, symbolGet, 0);
+  console.log();
+  var o;
 
-      var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
-      o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
+  var rest2 = amountGet * t2.decimals;
+  var i=0;
+  while (i < orders.length && rest2) {
+    console.log('Trying order #' + i+1 + ', amount to buy:', rest2/t2.decimals, t2.symbol);
 
-      showOrder(ord, amountLeft, 999);
-
-      // rest = await makeTrade(ord, rest);
-      rest = await makeTrade(ord, rest * ord.priceOfTokenGive);
-      ++i;
+    ord = orders[i];
+    if (ord.priceOfTokenGive > maxPrice) {
+      console.log('Cheapest price found:', ord.priceOfTokenGive);
+      return;
     }
+
+
+    var o = ord.event;
+    var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
+    o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
+    showOrder(ord, amountLeft, 999);
+
+    rest2 = await makeTrade(ord, rest2 * ord.priceOfTokenGive);
+    ++i;
   }
-  else if (amount2 == 0) {
-  }
-  else {
-  }
+  console.log('No more orders to try.');
+  console.log();
 }
 
+
+async function sellTokenAtPrice(amountGive, symbolGive, minPrice, priceSymbol) {
+  var t1 = await tokenFromSymbol(symbolGive);
+  // var t2 = await tokenFromSymbol(priceSymbol);
+  console.log('ORDERS THAT GIVE ' + priceSymbol + ' for ' + symbolGive + ':');
+  var orders = await listPairOrders(symbolGive, priceSymbol, 0);
+  console.log();
+  var o;
+
+  var rest1 = amountGive * t1.decimals;
+  var i=0;
+  while (i < orders.length && rest1) {
+    console.log('Trying order #' + i+1 + ', amount to sell:', rest1/t1.decimals, t1.symbol);
+
+    ord = orders[i];
+    if (ord.priceOfTokenGet <= minPrice) {
+      console.log('Best price offered:', ord.priceOfTokenGet);
+      return;
+    }
+
+    var o = ord.event;
+    var amountLeft = await bursa.methods.amountLeft(o.tokenGet, o.amountGet,
+    o.tokenGive, o.amountGive, o.block, o.user).call({ from: acc0 });
+    showOrder(ord, amountLeft, 999);
+
+    rest1 = await makeTrade(ord, rest1);
+    ++i;
+  }
+  console.log('No more orders to try.');
+  console.log();
+}
+
+
+
+async function makeTrade(o, amountGive) {
+  var willGive = amountGive;
+  var restGive;
+  var canGive = await bursa.methods.canTrade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
+    o.event.block, o.event.user, willGive).call({ from: acc0, gas: 1000000 });
+
+  if (canGive == 0) {
+    console.log('Can\'t get any', o.symbolGive + '.');
+    return amountGive;
+  }
+  if (amountGive > canGive) {
+    willGive = canGive;
+  }
+  var canGet = canGive * o.priceOfTokenGet;
+  var willGet = willGive / canGive * canGet;
+  restGive = amountGive * o.priceOfTokenGet - willGet;
+  if (restGive < 100000000) {
+    restGive = 0;
+  }
+
+  console.log('Can give ', canGive / o.decimalsTokenGive, o.symbolGet);
+  console.log('Will give ' + willGive / o.decimalsTokenGet, o.symbolGet);
+  console.log('Can get     ' + canGet / o.decimalsTokenGet, o.symbolGive);
+  console.log('Will get    ' + willGet / o.decimalsTokenGive, o.symbolGive);
+
+  var tx = await bursa.methods.trade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
+    o.event.block, o.event.user, willGive, 0).send({ from: acc0, gas: 1000000 });
+  console.log('Trade accomplished. ', willGet / o.decimalsTokenGive, o.symbolGive, 'for', willGive / o.decimalsTokenGet, o.symbolGet);
+  console.log('Rest to give ' + restGive / o.decimalsTokenGive, o.symbolGive);
+  console.log();
+  return restGive;
+}
+
+
+/*
 async function makeTrade(o, willGet) {
   var canGive = await bursa.methods.canTrade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
     o.event.block, o.event.user, willGet).call({ from: acc0, gas: 1000000 });
 
   console.log('can give ', canGive / o.decimalsTokenGive, o.symbolGet);
+  process.exit()
   if (canGive == 0) return willGet;
   var restGive;
 
@@ -749,11 +838,11 @@ async function makeTrade(o, willGet) {
   //   restGive = willGet - canGet;
   // }
 
-  console.log('PRE can give ', canGive / o.decimalsTokenGive, o.symbolGet);
-  console.log('PRE will give ' + willGive / o.decimalsTokenGet, o.symbolGet);
-  console.log('PRE can get     ' + canGet / o.decimalsTokenGet, o.symbolGive);
-  console.log('PRE will get    ' + willGet / o.decimalsTokenGive, o.symbolGive);
-  console.log('PRE rest to give ' + restGive / o.decimalsTokenGive, o.symbolGive);
+  // console.log('PRE can give ', canGive / o.decimalsTokenGive, o.symbolGet);
+  // console.log('PRE will give ' + willGive / o.decimalsTokenGet, o.symbolGet);
+  // console.log('PRE can get     ' + canGet / o.decimalsTokenGet, o.symbolGive);
+  // console.log('PRE will get    ' + willGet / o.decimalsTokenGive, o.symbolGive);
+  // console.log('PRE rest to give ' + restGive / o.decimalsTokenGive, o.symbolGive);
   if (willGive > canGive) {
     willGive = canGive;
   }
@@ -774,10 +863,11 @@ async function makeTrade(o, willGet) {
   console.log('will get    ' + willGet / o.decimalsTokenGive, o.symbolGive);
   console.log('rest to give ' + restGive / o.decimalsTokenGive, o.symbolGive);
 
-  var tx = await bursa.methods.trade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
-    o.event.block, o.event.user, willGive, 0).send({ from: acc0, gas: 1000000 });
+  // var tx = await bursa.methods.trade(o.event.tokenGet, o.event.amountGet, o.event.tokenGive, o.event.amountGive,
+  //   o.event.block, o.event.user, willGive, 0).send({ from: acc0, gas: 1000000 });
   console.log('Trade accomplished. ', willGet / o.decimalsTokenGive, o.symbolGive, 'for', willGive / o.decimalsTokenGet, o.symbolGet);
   console.log();
   return restGive;
   // return restGive * ord.priceOfTokenGive;
 }
+*/

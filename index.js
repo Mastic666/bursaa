@@ -1,5 +1,4 @@
 var compiled = require('./compiled.js');
-var deployed = require('./deployed.js');
 
 
 var bursalib = require('./bursalib.js');
@@ -16,6 +15,10 @@ function toWei(amount) {
 }
 function fromWei(amount) {
   return web3.utils.fromWei(amount.toString(), 'ether');
+}
+const BigNumber = require('bignumber.js');
+function big(value) {
+  return new BigNumber(value);
 }
 
 
@@ -210,30 +213,30 @@ async function parseInput(data) {
         return;
       }
     case 'buy':
-      // if (word.length > 5 && word[3] == 'price') {
-      //   await matchOrders(word[5], parseFloat(word[4]), word[2], parseFloat(word[1]));
-      // }
-      // else
-      if (word.length > 2) {
-        await bursalib.matchOrders('ether', 0, word[2], parseFloat(word[1]));
+      if (word.length >= 5 && word[3] == 'at') {
+        if (word.length == 5) word[5] = 'ether';
+        await bursalib.buyTokenAtPrice(parseFloat(word[1]), word[2], parseFloat(word[4]), word[5]);
+      }
+      else if (word.length >= 5 && word[3] == 'for') {
+        await bursalib.buyTokenAtPrice(parseFloat(word[1]), word[2], 0, word[4]);
+      }
+      else if (word.length >= 3) {
+        await bursalib.buyTokenAtPrice(parseFloat(word[1]), word[2], 0, 'ether');
       }
     break;
 
     case 's':
     case 'sell':
-      // if (word.length > 5 && word[3] == 'price') {
-      //   await matchOrders(word[2], parseFloat(word[1]), word[5], parseFloat(word[4]));
-      // }
-      // else
-      if (word.length > 2) {
-        await bursalib.matchOrders(word[2], parseFloat(word[1]), 'ether', 0);
-      }
-    break;
-
-    // case 't':
     case 'trade':
-      if (word.length > 5 && word[3] == 'for') {
-        await bursalib.matchOrders(word[2], parseFloat(word[1]), word[5], parseFloat(word[4]));
+      if (word.length >= 5 && word[3] == 'at') {
+        if (word.length == 5) word[5] = 'ether';
+        await bursalib.sellTokenAtPrice(parseFloat(word[1]), word[2], parseFloat(word[4]), word[5]);
+      }
+      else if (word.length >= 5 && word[3] == 'for') {
+        await bursalib.sellTokenAtPrice(parseFloat(word[1]), word[2], 0, word[4]);
+      }
+      else if (word.length >= 3) {
+        await bursalib.sellTokenAtPrice(parseFloat(word[1]), word[2], 0, 'ether');
       }
     break;
 
@@ -266,8 +269,6 @@ async function main() {
     web3.eth.defaultAccount = acc[0];
     acc0 = web3.eth.defaultAccount;
     web3.eth.coinbase = acc0;
-    bursa = await new web3.eth.Contract(compiled.bursa_abi, deployed.bursa_address,
-        { from: acc0, gasPrice: gasPrice });
   }
   await connect();
 
